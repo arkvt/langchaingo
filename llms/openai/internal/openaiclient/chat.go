@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -678,7 +680,9 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 	// If index is not set, update the last tool call by rules
 	if delta.Index == nil {
 		// It's the first delta chunk, have to append a new tool call
-		if delta.ID != "" && delta.Type != "" && delta.Function.Name != "" {
+		// Some providers (e.g., SiliconFlow, DashScope) don't return ID in streaming mode,
+		// so we only check for Function.Name to detect a new tool call
+		if delta.Function.Name != "" {
 			message.ToolCalls = append(message.ToolCalls, ToolCall{})
 		}
 		// Get the index of the last tool call
@@ -697,7 +701,16 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 	toolCall := &message.ToolCalls[*delta.Index]
 
 	// If it is the first delta chunk, set the tool call fields to the current tool call
-	if delta.ID != "" && delta.Type != "" && delta.Function.Name != "" {
+	// Some providers don't return ID in streaming mode, so we generate a synthetic one
+	if delta.Function.Name != "" && toolCall.Function.Name == "" {
+		// Generate synthetic ID if provider doesn't return one (e.g., SiliconFlow, DashScope)
+		if delta.ID == "" {
+			delta.ID = makeStreamingToolCallID(*delta.Index, delta.Function.Name)
+		}
+		// Default type to "function" if not provided
+		if delta.Type == "" {
+			delta.Type = "function"
+		}
 		toolCall.ID = delta.ID
 		toolCall.Type = delta.Type
 		toolCall.Function.Name = delta.Function.Name
@@ -705,7 +718,7 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 	}
 
 	// For next delta chunks, append arguments to the current tool call
-	if delta.ID == "" {
+	if toolCall.Function.Name != "" && delta.Function.Name == "" {
 		toolCall.Function.Arguments += delta.Function.Arguments
 
 		// Complete the tool call fields with stored values from the current tool call
@@ -713,6 +726,18 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 		delta.ID = toolCall.ID
 		delta.Type = toolCall.Type
 	}
+}
+
+// makeStreamingToolCallID generates a synthetic tool call ID for providers
+// that don't return IDs in streaming mode (e.g., SiliconFlow, DashScope).
+// Format matches OpenAI's style: "call_" + 16 random hex characters
+func makeStreamingToolCallID(index int, name string) string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to a deterministic ID if random fails
+		return fmt.Sprintf("call_%d_%s", index, name)
+	}
+	return "call_" + hex.EncodeToString(b)
 }
 
 // some providers starts streaming tool calls since the first index number istead of zero
