@@ -704,10 +704,6 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 	// Get current tool call which is being updated
 	toolCall := &message.ToolCalls[*delta.Index]
 
-	// Debug logging for tool call updates
-	// log.Printf("[DEBUG updateToolCall] index=%d, delta.ID=%q, delta.Type=%q, delta.Function.Name=%q, delta.Function.Arguments=%q (len=%d), toolCall.Function.Name=%q, toolCall.Function.Arguments=%q (len=%d)",
-	// 	*delta.Index, delta.ID, delta.Type, delta.Function.Name, len(delta.Function.Arguments), delta.Function.Arguments, toolCall.Function.Name, len(toolCall.Function.Arguments), toolCall.Function.Arguments)
-
 	// If it is the first delta chunk, set the tool call fields to the current tool call
 	// Some providers don't return ID in streaming mode, so we generate a synthetic one
 	if delta.Function.Name != "" && toolCall.Function.Name == "" {
@@ -723,13 +719,12 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 		toolCall.Type = delta.Type
 		toolCall.Function.Name = delta.Function.Name
 		toolCall.Function.Arguments = delta.Function.Arguments
-	}
-
-	// For next delta chunks, append arguments to the current tool call
-	if toolCall.Function.Name != "" && delta.Function.Name == "" {
+	} else if toolCall.Function.Name != "" && delta.Function.Arguments != "" {
+		// For subsequent delta chunks, append arguments to the current tool call
+		// Use else-if to avoid double-appending when first chunk also has arguments
 		toolCall.Function.Arguments += delta.Function.Arguments
 
-		// Complete the tool call fields with stored values from the current tool call
+		// Complete the delta fields with stored values from the current tool call
 		delta.Function.Name = toolCall.Function.Name
 		delta.ID = toolCall.ID
 		delta.Type = toolCall.Type
