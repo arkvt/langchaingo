@@ -686,6 +686,10 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 			message.ToolCalls = append(message.ToolCalls, ToolCall{})
 		}
 		// Get the index of the last tool call
+		// Defensive: if no tool calls exist yet, create one to avoid negative index
+		if len(message.ToolCalls) == 0 {
+			message.ToolCalls = append(message.ToolCalls, ToolCall{})
+		}
 		lastIdx := len(message.ToolCalls) - 1
 		delta.Index = &lastIdx
 	}
@@ -699,6 +703,10 @@ func updateToolCall(message *ChatMessage, delta *StreamedToolCall) {
 
 	// Get current tool call which is being updated
 	toolCall := &message.ToolCalls[*delta.Index]
+
+	// Debug logging for tool call updates
+	// log.Printf("[DEBUG updateToolCall] index=%d, delta.ID=%q, delta.Type=%q, delta.Function.Name=%q, delta.Function.Arguments=%q (len=%d), toolCall.Function.Name=%q, toolCall.Function.Arguments=%q (len=%d)",
+	// 	*delta.Index, delta.ID, delta.Type, delta.Function.Name, len(delta.Function.Arguments), delta.Function.Arguments, toolCall.Function.Name, len(toolCall.Function.Arguments), toolCall.Function.Arguments)
 
 	// If it is the first delta chunk, set the tool call fields to the current tool call
 	// Some providers don't return ID in streaming mode, so we generate a synthetic one
